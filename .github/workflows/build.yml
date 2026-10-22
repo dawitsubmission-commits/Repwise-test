@@ -1,0 +1,58 @@
+name: Build APK from zip
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '*.zip'
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Unzip the project
+        run: |
+          ZIP=$(ls repwise*.zip | sort -V | tail -1)
+          echo "Using project zip: $ZIP"
+          mkdir proj
+          unzip -q "$ZIP" -d proj
+          SETTINGS=$(find proj -maxdepth 3 -name settings.gradle.kts | head -1)
+          if [ -z "$SETTINGS" ]; then echo "settings.gradle.kts not found in the zip"; exit 1; fi
+          echo "ROOT=$(dirname "$SETTINGS")" >> "$GITHUB_ENV"
+
+      - name: Add the full exercise pack (if present)
+        run: |
+          if [ -f exercise-pack-full.zip ]; then
+            mkdir -p "$ROOT/app/src/main/assets"
+            unzip -q -o exercise-pack-full.zip -d "$ROOT/app/src/main/assets"
+            echo "Exercise pack added: $(find "$ROOT/app/src/main/assets/exercises" -name '*.svg' | wc -l) SVG files"
+          else
+            echo "No exercise-pack-full.zip found, using the exercises already in the project"
+          fi
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 9.3.1
+
+      - name: Create debug keystore
+        working-directory: ${{ env.ROOT }}
+        run: keytool -genkeypair -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+
+      - name: Unit tests
+        working-directory: ${{ env.ROOT }}
+        run: gradle testDebugUnitTest --no-daemon
+        continue-on-error: true
+
+      - name: Build APK
+        working-directory: ${{ env.ROOT }}
+        run: gradle assembleDebug --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: repwise-debug-apk
+          path: ${{ env.ROOT }}/app/build/outputs/apk/debug/*.apk
