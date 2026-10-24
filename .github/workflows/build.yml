@@ -30,6 +30,16 @@ jobs:
             echo "No exercise-pack-full.zip found, using the exercises already in the project"
           fi
 
+      - name: Add the muscle map pack (if present)
+        run: |
+          if [ -f musclemap-pack.zip ]; then
+            mkdir -p "$ROOT/app/src/main/assets"
+            unzip -q -o musclemap-pack.zip -d "$ROOT/app/src/main/assets"
+            echo "Muscle map pack added"
+          else
+            echo "No musclemap-pack.zip found"
+          fi
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
